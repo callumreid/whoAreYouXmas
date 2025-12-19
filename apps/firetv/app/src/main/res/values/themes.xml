@@ -1,0 +1,13 @@
+<resources>
+    <style name="Theme.WhoAreYouXmas" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorPrimary">#0a0d0b</item>
+        <item name="colorPrimaryDark">#000000</item>
+        <item name="colorAccent">#f1c86d</item>
+    </style>
+
+    <style name="Theme.WhoAreYouXmas.FullScreen" parent="Theme.WhoAreYouXmas">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+</resources>
