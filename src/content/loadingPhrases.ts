@@ -1,0 +1,17 @@
+export const LOADING_PHRASES = [
+  "Consulting the Naughty Ledger...",
+  "Shaking the snow globe...",
+  "Summoning seasonal spirits...",
+  "Untangling lights (pray for us)...",
+  "Counting reindeer (one is missing)...",
+  "Baking suspicious cookies...",
+  "Measuring holiday chaos...",
+  "Checking twice, regretting once...",
+  "Warming up the sleigh engine...",
+  "Rewrapping destiny...",
+  "Assembling your festive vibe...",
+  "Negotiating with the elves...",
+  "Lighting a candle for dramatic effect...",
+  "Opening the vault of jingles...",
+  "Searching for the perfect jingle...",
+];
