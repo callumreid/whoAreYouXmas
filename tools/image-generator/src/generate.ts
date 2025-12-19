@@ -4,9 +4,11 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import OpenAI from "openai";
 import pLimit from "p-limit";
-import slugify from "slugify";
+import slugifyLib from "slugify";
+const slugify = (slugifyLib as any).default || slugifyLib;
 import sharp from "sharp";
 import * as charactersModule from "../../../apps/web/src/content/characters.js";
+import { QUESTIONS } from "../../../apps/web/src/content/questions.js";
 
 type Manifest = Record<string, string>;
 
@@ -17,9 +19,11 @@ type CliOptions = {
   force: boolean;
   concurrency: number;
   derived: boolean;
+  mode: "characters" | "questions";
 };
 
 const DEFAULT_OUT_DIR = "apps/web/public/characters";
+const DEFAULT_QUESTIONS_OUT_DIR = "apps/web/public/questions";
 const DEFAULT_SIZE = "1024x1024";
 const DEFAULT_CONCURRENCY = 3;
 const DERIVED_SIZES = [512, 256];
@@ -49,7 +53,8 @@ const parseArgs = (argv: string[]): CliOptions => {
     throw new Error("Missing required --anchor <path> argument.");
   }
 
-  const outDir = getValue("--out") ?? DEFAULT_OUT_DIR;
+  const mode = (getValue("--mode") || "characters") as "characters" | "questions";
+  const outDir = getValue("--out") ?? (mode === "questions" ? DEFAULT_QUESTIONS_OUT_DIR : DEFAULT_OUT_DIR);
   const size = getValue("--size") ?? DEFAULT_SIZE;
   const concurrencyRaw = getValue("--concurrency");
   const concurrency = concurrencyRaw ? Number(concurrencyRaw) : DEFAULT_CONCURRENCY;
@@ -58,6 +63,7 @@ const parseArgs = (argv: string[]): CliOptions => {
     anchorPath,
     outDir,
     size,
+    mode,
     force: hasFlag("--force"),
     concurrency: Number.isFinite(concurrency) && concurrency > 0 ? concurrency : DEFAULT_CONCURRENCY,
     derived: hasFlag("--derived"),
@@ -166,50 +172,79 @@ const main = async () => {
   const limit = pLimit(Math.max(1, Math.min(options.concurrency, 4)));
   const manifest: Manifest = {};
   
-  const characters: any = (charactersModule as any).default || charactersModule;
-  const characterNames = characters.CHARACTER_NAMES;
+  if (options.mode === "characters") {
+    const characters: any = (charactersModule as any).default || charactersModule;
+    const characterNames = characters.CHARACTER_NAMES;
 
-  if (!characterNames || !Array.isArray(characterNames)) {
-    throw new Error("Could not find CHARACTER_NAMES array. Check your imports and content/characters.ts file.");
+    if (!characterNames || !Array.isArray(characterNames)) {
+      throw new Error("Could not find CHARACTER_NAMES array. Check your imports and content/characters.ts file.");
+    }
+
+    const tasks = characterNames.map((name: string) =>
+      limit(async () => {
+        const slug = toSlug(name);
+        const characterDir = path.join(outDir, slug);
+        await fs.promises.mkdir(characterDir, { recursive: true });
+        
+        const outputPath = path.join(characterDir, `1.png`);
+        const manifestPath = resolveManifestPath(outputPath, outDir);
+        manifest[name] = manifestPath;
+
+        if (!options.force && fs.existsSync(outputPath)) {
+          console.log(`Skipping ${name} (already exists)`);
+          return;
+        }
+
+        const prompt = buildPrompt(name);
+        const buffer = await withRetries(() => generateImage(client, prompt, anchorPath, options.size));
+
+        await fs.promises.writeFile(outputPath, buffer);
+        console.log(`Wrote ${outputPath}`);
+
+        if (options.derived) {
+          await Promise.all(
+            DERIVED_SIZES.map(async (target) => {
+              const resized = await sharp(buffer)
+                .resize(target, target)
+                .png()
+                .toBuffer();
+              const derivedPath = path.join(characterDir, `${target}.png`);
+              await fs.promises.writeFile(derivedPath, resized);
+            }),
+          );
+        }
+      }),
+    );
+
+    await Promise.all(tasks);
+  } else {
+    // Questions mode
+    const tasks = QUESTIONS.map((q) =>
+      limit(async () => {
+        if (!q.imagePrompt) return;
+
+        const questionDir = path.join(outDir, q.id);
+        await fs.promises.mkdir(questionDir, { recursive: true });
+
+        const outputPath = path.join(questionDir, `1.png`);
+        const manifestPath = resolveManifestPath(outputPath, outDir);
+        manifest[q.id] = manifestPath;
+
+        if (!options.force && fs.existsSync(outputPath)) {
+          console.log(`Skipping question ${q.id} (already exists)`);
+          return;
+        }
+
+        const prompt = `${STYLE_LOCK} ${q.imagePrompt}`;
+        const buffer = await withRetries(() => generateImage(client, prompt, anchorPath, options.size));
+
+        await fs.promises.writeFile(outputPath, buffer);
+        console.log(`Wrote ${outputPath}`);
+      }),
+    );
+
+    await Promise.all(tasks);
   }
-
-  const tasks = characterNames.map((name: string) =>
-    limit(async () => {
-      const slug = toSlug(name);
-      const characterDir = path.join(outDir, slug);
-      await fs.promises.mkdir(characterDir, { recursive: true });
-      
-      const outputPath = path.join(characterDir, `1.png`);
-      const manifestPath = resolveManifestPath(outputPath, outDir);
-      manifest[name] = manifestPath;
-
-      if (!options.force && fs.existsSync(outputPath)) {
-        console.log(`Skipping ${name} (already exists)`);
-        return;
-      }
-
-      const prompt = buildPrompt(name);
-      const buffer = await withRetries(() => generateImage(client, prompt, anchorPath, options.size));
-
-      await fs.promises.writeFile(outputPath, buffer);
-      console.log(`Wrote ${outputPath}`);
-
-      if (options.derived) {
-        await Promise.all(
-          DERIVED_SIZES.map(async (target) => {
-            const resized = await sharp(buffer)
-              .resize(target, target)
-              .png()
-              .toBuffer();
-            const derivedPath = path.join(characterDir, `${target}.png`);
-            await fs.promises.writeFile(derivedPath, resized);
-          }),
-        );
-      }
-    }),
-  );
-
-  await Promise.all(tasks);
 
   const manifestFile = path.join(outDir, "manifest.json");
   await fs.promises.writeFile(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);

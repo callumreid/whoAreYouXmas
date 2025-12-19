@@ -52,3 +52,27 @@ To add variations, simply add `2.png`, `3.png`, etc., to the respective folder.
 If running with `--derived`, the files are saved directly in the character folder:
 - `[slug]/512.png`
 - `[slug]/256.png`
+
+# Question Images
+
+The tool now supports generating images for each question. These are displayed alongside the questions during the quiz.
+
+**Output Directory**: `apps/web/public/questions/`
+**Primary Image**: `[questionId]/1.png` (e.g., `q1/1.png`)
+
+To generate these, run the tool with the `--mode=questions` flag:
+
+```bash
+pnpm image:gen -- --anchor [path] --mode=questions
+```
+
+| Question ID | Folder Path | Primary Image |
+| :--- | :--- | :--- |
+| q1 | `q1/` | `q1/1.png` |
+| q2 | `q2/` | `q2/1.png` |
+| q3 | `q3/` | `q3/1.png` |
+| ... | ... | ... |
+| q24 | `q24/` | `q24/1.png` |
+
+## Multiple Images
+Just like characters, you can add `2.png`, `3.png`, etc., to the respective question folder to support future variation picking.
