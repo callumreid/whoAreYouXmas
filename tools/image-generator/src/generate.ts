@@ -176,7 +176,10 @@ const main = async () => {
   const tasks = characterNames.map((name: string) =>
     limit(async () => {
       const slug = toSlug(name);
-      const outputPath = path.join(outDir, `${slug}.png`);
+      const characterDir = path.join(outDir, slug);
+      await fs.promises.mkdir(characterDir, { recursive: true });
+      
+      const outputPath = path.join(characterDir, `1.png`);
       const manifestPath = resolveManifestPath(outputPath, outDir);
       manifest[name] = manifestPath;
 
@@ -198,7 +201,7 @@ const main = async () => {
               .resize(target, target)
               .png()
               .toBuffer();
-            const derivedPath = path.join(outDir, `${slug}@${target}.png`);
+            const derivedPath = path.join(characterDir, `${target}.png`);
             await fs.promises.writeFile(derivedPath, resized);
           }),
         );

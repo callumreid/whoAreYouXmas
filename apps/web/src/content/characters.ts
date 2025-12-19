@@ -34,14 +34,15 @@ export const CHARACTER_NAMES = [
   "Banky Claus (rich business Santa)",
   "Kevin McCallister (from home alone)",
   "Buzz McCallister (from home alone)",
-  "the Bad Mother from home alone please do not change anything about the specifics of the list items no editing",
+  "the Bad Mother from home alone",
+  "runaway polar express"
 ];
 
 export const CHARACTERS = CHARACTER_NAMES;
 
-export const CHARACTER_IMAGE_BASE_PATH = "/results";
+export const CHARACTER_IMAGE_BASE_PATH = "/characters";
 
-// Images are resolved via slugified character names under /public/results.
+// Images are resolved via slugified character names under /public/characters.
 const slugifyCharacterName = (value: string) => {
   return value
     .toLowerCase()
@@ -49,5 +50,8 @@ const slugifyCharacterName = (value: string) => {
     .replace(/^-+|-+$/g, "");
 };
 
-export const getCharacterImage = (name: string) =>
-  `${CHARACTER_IMAGE_BASE_PATH}/${slugifyCharacterName(name)}.png`;
+export const getCharacterImage = (name: string) => {
+  const slug = slugifyCharacterName(name);
+  // In the future, we can randomize the '1' here or fetch a count from a manifest
+  return `${CHARACTER_IMAGE_BASE_PATH}/${slug}/1.png`;
+};
