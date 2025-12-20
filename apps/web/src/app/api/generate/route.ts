@@ -98,7 +98,7 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         model: MODEL,
-        temperature: 0.8,
+        temperature: 1.0, // Increased for more variety
         response_format: { type: "json_object" },
         messages: [
           {
@@ -110,7 +110,8 @@ export async function POST(request: Request) {
             role: "user",
             content: `Perform a deep psychological analysis of this person's quiz responses:
 
-USER: ${body.name}
+USER: ${body.name} (Use their name as context for personality interpretation)
+ANALYSIS SESSION: ${Date.now()} (Ensure fresh analysis, not cached response)
 
 THEIR COMPLETE ANSWER PROFILE:
 ${body.answers.map((a, i) => `Q${i + 1}: "${body.questions[i].prompt}"
@@ -131,8 +132,10 @@ ANALYSIS INSTRUCTIONS:
 2. MATCH TO ONE CHARACTER:
    - Look at the CHARACTER PROFILES above
    - Find the character whose traits align MOST with their pattern
-   - DO NOT default to the same character - really analyze the differences
+   - CRITICAL: Vary your selections - avoid repeating the same character
+   - If answers are similar but not identical, find nuanced differences
    - Consider the whole answer pattern, not just one answer
+   - Even small differences in choices should lead to different characters
 
 3. WRITE PERSONALIZED REVEAL (3-5 sentences):
    - Reference AT LEAST 2 specific choices they made
