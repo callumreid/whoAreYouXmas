@@ -72,14 +72,14 @@ USER: ${body.name}
 
 THEIR ANSWERS:
 ${body.answers.map((a, i) => `Q${i + 1}: "${body.questions[i].prompt}"
-   → Chose: "${body.questions[i].options[a.answerIndex]}"${a.reasoning ? ` (Reasoning: ${a.reasoning})` : ''}`).join('\n\n')}
+   → Chose: "${a.selectedOptionText || 'No answer'}"${a.customText ? ` (Note: ${a.customText})` : ''}`).join('\n\n')}
 
 AVAILABLE CHARACTERS:
 ${CHARACTERS.join(', ')}
 
 INSTRUCTIONS:
 1. Analyze patterns in their choices: Are they chaotic or organized? Dark-humored or wholesome? Rebellious or traditional?
-2. Look at their reasoning (if provided) for deeper insight
+2. Look at their custom notes (if provided) for deeper insight
 3. Match them to the ONE character whose personality and energy most aligns with their answers
 4. Write a reveal text (3-5 sentences) that:
    - References specific choices they made
