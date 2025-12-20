@@ -37,16 +37,17 @@ export async function POST(request: Request) {
     const apiKey = process.env.OPENAI_API_KEY;
     const body = (await request.json()) as GenerateBody;
 
-    if (!apiKey || !body?.name || !body?.questions?.length) {
+    if (!apiKey) {
+      console.error("[API] OPENAI_API_KEY not configured");
+      return NextResponse.json(getFallbackResult(fallbackSeed));
+    }
+    
+    if (!body?.name || !body?.questions?.length) {
+      console.error("[API] Invalid request body");
       return NextResponse.json(getFallbackResult(fallbackSeed));
     }
 
-    const prompt = {
-      name: body.name,
-      characters: CHARACTERS,
-      questions: body.questions,
-      answers: body.answers,
-    };
+    console.log(`[API] Analyzing ${body.name} with ${body.answers.length} answers`);
 
     const response = await fetch(OPENAI_URL, {
       method: "POST",
@@ -94,17 +95,27 @@ Return JSON: { "characterName": "exact character name from list", "revealText": 
       }),
     });
 
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[API] OpenAI error ${response.status}:`, errorText);
+      return NextResponse.json(getFallbackResult(body.name));
+    }
+
     const data = await response.json();
     const content = data?.choices?.[0]?.message?.content ?? "";
     const parsed = extractJson(content);
 
     if (!isValidResult(parsed)) {
+      console.error("[API] Invalid AI response format");
       return NextResponse.json(getFallbackResult(body.name));
     }
 
     if (!CHARACTERS.includes(parsed.characterName)) {
+      console.error(`[API] AI returned invalid character: ${parsed.characterName}`);
       return NextResponse.json(getFallbackResult(body.name));
     }
+
+    console.log(`[API] Success: Matched ${body.name} to ${parsed.characterName}`);
 
     return NextResponse.json({
       characterName: parsed.characterName,
@@ -117,7 +128,8 @@ Return JSON: { "characterName": "exact character name from list", "revealText": 
         "Access-Control-Allow-Headers": "Content-Type",
       },
     });
-  } catch {
+  } catch (error) {
+    console.error("[API] Exception:", error instanceof Error ? error.message : String(error));
     return NextResponse.json(getFallbackResult(fallbackSeed), {
       headers: {
         "Access-Control-Allow-Origin": "*",
