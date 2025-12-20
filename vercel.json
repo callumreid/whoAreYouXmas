@@ -1,0 +1,6 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "pnpm --filter web build",
+  "outputDirectory": "apps/web/out"
+}
+
