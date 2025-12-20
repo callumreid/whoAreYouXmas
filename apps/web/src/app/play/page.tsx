@@ -9,6 +9,7 @@ export default function PlayPage() {
   const router = useRouter();
   const { state, ready, answerQuestion, undoLastAnswer } = useGameState();
   const [customAnswer, setCustomAnswer] = useState("");
+  const [imageLoaded, setImageLoaded] = useState(false);
   const firstOptionRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -26,6 +27,26 @@ export default function PlayPage() {
   }, [ready, state, router]);
 
   const currentIndex = state?.answers.length ?? 0;
+
+  const currentQuestion = useMemo(() => {
+    if (!state) return null;
+    const questionId = state.questionIds[currentIndex];
+    return questionId ? QUESTIONS_BY_ID.get(questionId) ?? null : null;
+  }, [state, currentIndex]);
+
+  // Preload image when question changes
+  useEffect(() => {
+    if (!currentQuestion?.imagePrompt) {
+      setImageLoaded(true);
+      return;
+    }
+    
+    setImageLoaded(false);
+    const img = new Image();
+    img.src = `/questions/${currentQuestion.id}/1.png`;
+    img.onload = () => setImageLoaded(true);
+    img.onerror = () => setImageLoaded(true); // Show question even if image fails
+  }, [currentQuestion?.id]);
 
   // Auto-focus first option when question changes
   useEffect(() => {
@@ -66,11 +87,6 @@ export default function PlayPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [currentIndex, undoLastAnswer, router]);
 
-  const currentQuestion = useMemo(() => {
-    if (!state) return null;
-    const questionId = state.questionIds[currentIndex];
-    return questionId ? QUESTIONS_BY_ID.get(questionId) ?? null : null;
-  }, [state, currentIndex]);
 
   const handleSelect = (option: string) => {
     if (!currentQuestion) return;
@@ -101,6 +117,18 @@ export default function PlayPage() {
     return (
       <main className="min-h-screen flex items-center justify-center px-4">
         <p className="text-white/70">Loading festive chaos...</p>
+      </main>
+    );
+  }
+
+  // Show loading state while image is loading
+  if (currentQuestion.imagePrompt && !imageLoaded) {
+    return (
+      <main className="relative z-10 min-h-screen px-4 py-10 flex items-center justify-center">
+        <div className="peanuts-card p-8 text-center">
+          <div className="inline-block animate-spin text-4xl mb-4">🎄</div>
+          <p className="text-[#1a1a1a] font-bold">Loading question image...</p>
+        </div>
       </main>
     );
   }
