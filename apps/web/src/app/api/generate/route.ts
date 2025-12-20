@@ -6,6 +6,47 @@ import { getFallbackResult } from "@/lib/fallback";
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 
+// Character personality profiles for better matching
+const CHARACTER_PROFILES = `
+CHARACTER PERSONALITY PROFILES (use these to match):
+
+- Santy Claus (OG): Traditional, wholesome, organized, classic choices, reliable
+- Smelly Mall Santa: Cynical, burnt out, seen it all, practical, slightly defeated
+- Rudolph (before the other reindeer came around): Outcast, misunderstood, lonely, pre-redemption arc
+- Boring Flightless Reindeer: Unremarkable, blends in, plays it safe, no plot twists
+- The Grinch (early movie): Bitter, antisocial, actively dislikes Christmas, isolationist
+- The Grinch (late movie): Reformed, heart grown, optimistic, found the true meaning
+- Krampus: Dark humor, punisher, chaos energy, slightly menacing
+- Frosty the Snowman: Jolly, innocent, childlike wonder, ephemeral joy
+- Charlie Brown: Melancholic, trying their best, things go wrong, existential
+- Polar Bear (laid of by Coke): Unemployed, betrayed by capitalism, cynical about commercialism
+- Orphan From a Christmas Movie: Plucky, resilient, believes in magic, underdog
+- Blow-Up Inflatable Santa: Artificial, flashy, all show no substance, desperately festive
+- Over-Served Uncle (melancholic): Drunk and sad, nostalgic, emotional vulnerability
+- Over-Served Uncle (boisterous): Drunk and loud, center of attention, no filter
+- Baby Jesus: Sacred, peaceful, pure, spiritually centered
+- Elf Union Organizer: Political, fights for workers, organized, rebellious with purpose
+- Xmas Tree on the Roof of the Car: Chaotic, barely holding together, making it work somehow
+- Adult Caroler: Enthusiastic, traditional participant, community-oriented, sincere
+- Even Tinier Tim: Extra vulnerable, needs help, sympathetic, small presence
+- (not so) Tiny Tim (took HGH and hit the gym): Overcorrected, buff redemption, surprising twist
+- The Rat Under Santa's Hat Controlling Santa: Manipulator, puppet master, hidden control
+- The Christmas Roast: Gets roasted, target of jokes, good sport about it
+- Max The Grinch's Dog: Loyal despite abuse, puts up with nonsense, sympathetic sidekick
+- A Who from Whoville (non-speaking part): Background character, unnoticed, ensemble player
+- The Ghost of a Chimney Sweep: Haunted, dark past, Victorian vibes, tragic
+- Surfing Santy Claws: Chill, California vibes, unconventional, goes with the flow
+- Santy Claws (crab Santa): Sideways approach, pinchy, beach creature energy
+- Santy Paws (dog Santa): Loyal, energetic, wants treats, man's best friend
+- Santy Jaws (shark Santa): Predatory, scary, unexpected danger, teeth
+- Skanky Claus (freaky-deeky Santa): Sexual energy, inappropriate, boundary-pushing
+- Banky Claus (rich business Santa): Capitalist, wealthy, corporate, material success
+- Kevin McCallister (from home alone): Resourceful, clever traps, chaos architect, home defender
+- Buzz McCallister (from home alone): Bully, antagonist, mean older sibling
+- the Bad Mother from home alone: Guilt-ridden, frantic, realizes mistakes too late
+- runaway polar express: Out of control, dangerous, thrilling, off the rails
+`;
+
 type GenerateBody = {
   name: string;
   questions: { prompt: string; options: [string, string, string] }[];
@@ -63,33 +104,51 @@ export async function POST(request: Request) {
           {
             role: "system",
             content:
-              "You are an expert Christmas personality analyst. Analyze the user's quiz answers deeply to understand their personality traits, humor style, chaos tolerance, and holiday spirit. Match them to the most fitting character based on psychological patterns, not random assignment.",
+              "You are an expert personality psychologist specializing in Christmas archetypes. Your job is to deeply analyze quiz responses, identify personality patterns, and match people to the character that BEST fits their psychological profile. Consider: chaos tolerance, humor style (dark vs wholesome), traditionalism vs rebellion, social behavior, emotional state, and life philosophy. BE SPECIFIC and VARIED in your matches - different answer patterns should lead to different characters.",
           },
           {
             role: "user",
-            content: `Analyze this person's quiz responses and match them to ONE character that best fits their personality:
+            content: `Perform a deep psychological analysis of this person's quiz responses:
 
 USER: ${body.name}
 
-THEIR ANSWERS:
+THEIR COMPLETE ANSWER PROFILE:
 ${body.answers.map((a, i) => `Q${i + 1}: "${body.questions[i].prompt}"
-   → Chose: "${a.selectedOptionText || 'No answer'}"${a.customText ? ` (Note: ${a.customText})` : ''}`).join('\n\n')}
+   → Selected: "${a.selectedOptionText || 'No answer'}"${a.customText ? `
+   → Custom response: "${a.customText}"` : ''}`).join('\n\n')}
 
-AVAILABLE CHARACTERS:
-${CHARACTERS.join(', ')}
+${CHARACTER_PROFILES}
 
-INSTRUCTIONS:
-1. Analyze patterns in their choices: Are they chaotic or organized? Dark-humored or wholesome? Rebellious or traditional?
-2. Look at their custom notes (if provided) for deeper insight
-3. Match them to the ONE character whose personality and energy most aligns with their answers
-4. Write a reveal text (3-5 sentences) that:
-   - References specific choices they made
-   - Explains WHY this character fits them
-   - Is funny, insightful, and slightly dark but family-friendly
-   - Feels personal, not generic
-5. Optional: Add a punchy tagline that captures their vibe
+ANALYSIS INSTRUCTIONS:
+1. PSYCHOLOGICAL PATTERN ANALYSIS:
+   - What's their chaos tolerance? (organized vs chaotic)
+   - Humor style? (dark/cynical vs wholesome/innocent)  
+   - Social approach? (isolated/antisocial vs community-oriented)
+   - Attitude toward tradition? (classic vs rebellious)
+   - Emotional state? (melancholic vs enthusiastic vs neutral)
+   - Self-awareness level? (self-deprecating vs confident vs oblivious)
 
-Return JSON: { "characterName": "exact character name from list", "revealText": "personalized analysis", "tagline": "optional punchy phrase" }`,
+2. MATCH TO ONE CHARACTER:
+   - Look at the CHARACTER PROFILES above
+   - Find the character whose traits align MOST with their pattern
+   - DO NOT default to the same character - really analyze the differences
+   - Consider the whole answer pattern, not just one answer
+
+3. WRITE PERSONALIZED REVEAL (3-5 sentences):
+   - Reference AT LEAST 2 specific choices they made
+   - Explain the psychological insight ("You chose X because you're Y type")
+   - Connect it to the character's essence
+   - Make it feel like a real personality test result
+   - Be funny but also genuinely insightful
+
+4. TAGLINE (optional): A punchy phrase that captures their vibe
+
+Return ONLY JSON: 
+{
+  "characterName": "exact character name from list",
+  "revealText": "personalized psychological analysis referencing their specific choices",
+  "tagline": "optional punchy phrase"
+}`,
           },
         ],
       }),
