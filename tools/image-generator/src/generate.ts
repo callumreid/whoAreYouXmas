@@ -2,13 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import pLimit from "p-limit";
 import slugifyLib from "slugify";
 const slugify = (slugifyLib as any).default || slugifyLib;
 import sharp from "sharp";
 import * as charactersModule from "../../../apps/web/src/content/characters.js";
-import { QUESTIONS } from "../../../apps/web/src/content/questions.js";
+import * as questionsModule from "../../../apps/web/src/content/questions.js";
+
+const QUESTIONS = (questionsModule as any).QUESTIONS || (questionsModule as any).default?.QUESTIONS;
 
 type Manifest = Record<string, string>;
 
@@ -90,6 +92,13 @@ const toSlug = (name: string) => {
 
 const isRetryable = (error: any) => {
   const status = error?.status ?? error?.response?.status;
+  const code = error?.code;
+  
+  // Don't retry content policy violations
+  if (code === 'content_policy_violation') {
+    return false;
+  }
+  
   return status === 429 || (typeof status === "number" && status >= 500);
 };
 
@@ -121,20 +130,27 @@ const resolveManifestPath = (outputPath: string, outDir: string) => {
 };
 
 const generateImage = async (client: OpenAI, prompt: string, anchorPath: string, size: string) => {
-  const response = await client.images.edit({
-    model: "gpt-image-1.5",
-    image: fs.createReadStream(anchorPath),
+  // Use images.generate instead of images.edit to avoid overly restrictive content policies
+  const response = await client.images.generate({
+    model: "dall-e-3",
     prompt,
-    size: size as any,
-    quality: "low",
-    response_format: "b64_json",
+    size: size === "1024x1024" ? "1024x1024" : "1024x1024",
+    quality: "standard",
+    n: 1,
   });
 
-  const b64 = response.data?.[0]?.b64_json;
-  if (!b64) {
-    throw new Error("No image data returned from OpenAI Images API.");
+  const url = response.data?.[0]?.url;
+  if (!url) {
+    throw new Error("No image URL returned from OpenAI Images API.");
   }
-  return Buffer.from(b64, "base64");
+  
+  // Fetch the image from the URL
+  const imageResponse = await fetch(url);
+  if (!imageResponse.ok) {
+    throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
+  }
+  
+  return Buffer.from(await imageResponse.arrayBuffer());
 };
 
 const MAIN_FILE = fileURLToPath(import.meta.url);
@@ -219,6 +235,10 @@ const main = async () => {
     await Promise.all(tasks);
   } else {
     // Questions mode
+    if (!QUESTIONS || !Array.isArray(QUESTIONS)) {
+      throw new Error("Could not load QUESTIONS array. Check your imports and content/questions.ts file.");
+    }
+
     const tasks = QUESTIONS.map((q) =>
       limit(async () => {
         if (!q.imagePrompt) return;
@@ -236,10 +256,18 @@ const main = async () => {
         }
 
         const prompt = `${STYLE_LOCK} ${q.imagePrompt}`;
-        const buffer = await withRetries(() => generateImage(client, prompt, anchorPath, options.size));
-
-        await fs.promises.writeFile(outputPath, buffer);
-        console.log(`Wrote ${outputPath}`);
+        
+        try {
+          const buffer = await withRetries(() => generateImage(client, prompt, anchorPath, options.size));
+          await fs.promises.writeFile(outputPath, buffer);
+          console.log(`Wrote ${outputPath}`);
+        } catch (error: any) {
+          if (error?.code === 'content_policy_violation') {
+            console.warn(`⚠️  Skipping ${q.id}: Content policy violation - "${q.imagePrompt.substring(0, 60)}..."`);
+            return;
+          }
+          throw error;
+        }
       }),
     );
 

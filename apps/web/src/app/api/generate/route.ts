@@ -56,19 +56,39 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         model: MODEL,
-        temperature: 0.9,
+        temperature: 0.8,
         response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
             content:
-              "You are a Christmas personality oracle. Respond with strict JSON only.",
+              "You are an expert Christmas personality analyst. Analyze the user's quiz answers deeply to understand their personality traits, humor style, chaos tolerance, and holiday spirit. Match them to the most fitting character based on psychological patterns, not random assignment.",
           },
           {
             role: "user",
-            content:
-              "Return JSON with: characterName (must be one of the provided characters), revealText (3-5 sentences, funny, bombastic, slightly dark but party-appropriate), optional tagline. No markdown, no extra keys. Here is the data: " +
-              JSON.stringify(prompt),
+            content: `Analyze this person's quiz responses and match them to ONE character that best fits their personality:
+
+USER: ${body.name}
+
+THEIR ANSWERS:
+${body.answers.map((a, i) => `Q${i + 1}: "${body.questions[i].prompt}"
+   → Chose: "${body.questions[i].options[a.answerIndex]}"${a.reasoning ? ` (Reasoning: ${a.reasoning})` : ''}`).join('\n\n')}
+
+AVAILABLE CHARACTERS:
+${CHARACTERS.join(', ')}
+
+INSTRUCTIONS:
+1. Analyze patterns in their choices: Are they chaotic or organized? Dark-humored or wholesome? Rebellious or traditional?
+2. Look at their reasoning (if provided) for deeper insight
+3. Match them to the ONE character whose personality and energy most aligns with their answers
+4. Write a reveal text (3-5 sentences) that:
+   - References specific choices they made
+   - Explains WHY this character fits them
+   - Is funny, insightful, and slightly dark but family-friendly
+   - Feels personal, not generic
+5. Optional: Add a punchy tagline that captures their vibe
+
+Return JSON: { "characterName": "exact character name from list", "revealText": "personalized analysis", "tagline": "optional punchy phrase" }`,
           },
         ],
       }),
