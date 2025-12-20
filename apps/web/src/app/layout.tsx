@@ -4,6 +4,7 @@ import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 import { GameStateProvider } from "@/components/game-state-provider";
 import { SnowEffect } from "@/components/snow-effect";
+import { AudioPlayer } from "@/components/audio-player";
 
 const headingFont = Coming_Soon({
   weight: "400",
@@ -37,6 +38,7 @@ export default function RootLayout({
       <body className="antialiased">
         <SnowEffect />
         <GameStateProvider>{children}</GameStateProvider>
+        <AudioPlayer />
         <Analytics />
       </body>
     </html>
