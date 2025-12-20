@@ -46,7 +46,7 @@ export function AudioPlayer() {
     <div className="fixed bottom-4 right-4 z-[100]">
       <audio
         ref={audioRef}
-        src="https://assets.mixkit.co/active_storage/sfx/1114/1114-preview.mp3"
+        src="https://cdn.pixabay.com/audio/2022/03/10/audio_4a468400c6.mp3"
         loop
       />
       <button
