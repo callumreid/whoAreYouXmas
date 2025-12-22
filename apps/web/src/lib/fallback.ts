@@ -19,7 +19,9 @@ const hashString = (value: string) => {
 };
 
 export const getFallbackResult = (seed: string): RevealResult => {
-  const hash = hashString(seed);
+  // Add timestamp component to add variety even with same seed
+  const variedSeed = seed + Date.now().toString().slice(-6);
+  const hash = hashString(variedSeed);
   const characterName = CHARACTERS[hash % CHARACTERS.length] ?? CHARACTERS[0];
   const revealText = cannedLines
     .slice(0, 3 + (hash % 3))

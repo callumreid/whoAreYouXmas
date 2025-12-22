@@ -44,12 +44,16 @@ const recordSelection = (characterName: string) => {
 };
 
 // Select a balanced character deterministically from available options
+// Adds some randomness to prevent same inputs always giving same result
 const selectBalancedCharacter = (seed: string, availableChars: string[]): string => {
   if (availableChars.length === 0) {
     // If all characters are overused, reset and use all
     return CHARACTERS[hashString(seed) % CHARACTERS.length] ?? CHARACTERS[0];
   }
-  const hash = hashString(seed);
+  // Add a small random component to the seed to add variety even with same inputs
+  // This helps when API is down and we're using fallback
+  const variedSeed = seed + Date.now().toString().slice(-6); // Last 6 digits of timestamp
+  const hash = hashString(variedSeed);
   return availableChars[hash % availableChars.length] ?? availableChars[0];
 };
 
@@ -121,54 +125,111 @@ const isValidResult = (value: any): value is RevealResult => {
 
 export async function POST(request: Request) {
   const fallbackSeed = Math.random().toString(36).slice(2);
+  let body: GenerateBody | null = null;
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    const body = (await request.json()) as GenerateBody;
+    // Trim the API key to remove any whitespace issues
+    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    body = (await request.json()) as GenerateBody;
+
+    // Debug API key - check for common issues
+    console.log(`[API] --- API Key Debug ---`);
+    console.log(`[API] OPENAI_API_KEY exists: ${!!apiKey}`);
+    console.log(`[API] OPENAI_API_KEY length: ${apiKey?.length || 0}`);
+    console.log(`[API] OPENAI_API_KEY starts with 'sk-': ${apiKey?.startsWith('sk-') || false}`);
+    console.log(`[API] OPENAI_API_KEY first 12 chars: ${apiKey?.substring(0, 12) || 'N/A'}`);
+    console.log(`[API] OPENAI_API_KEY last 8 chars: ${apiKey?.substring(Math.max(0, (apiKey?.length || 0) - 8)) || 'N/A'}`);
+    
+    // Check for common issues
+    if (apiKey) {
+      const trimmed = apiKey.trim();
+      console.log(`[API] Key has leading/trailing whitespace: ${apiKey !== trimmed}`);
+      console.log(`[API] Key contains newlines: ${apiKey.includes('\n') || apiKey.includes('\r')}`);
+      console.log(`[API] Key contains quotes: ${apiKey.includes('"') || apiKey.includes("'")}`);
+      console.log(`[API] Key format check: ${trimmed.startsWith('sk-') && trimmed.length > 40 && trimmed.length < 200 ? 'VALID FORMAT' : 'INVALID FORMAT'}`);
+      console.log(`[API] Trimmed key length: ${trimmed.length}`);
+      console.log(`[API] Trimmed key first 12: ${trimmed.substring(0, 12)}`);
+      console.log(`[API] Trimmed key last 8: ${trimmed.substring(Math.max(0, trimmed.length - 8))}`);
+    }
+    
+    console.log(`[API] All env vars with 'OPENAI':`, Object.keys(process.env).filter(k => k.includes('OPENAI')).map(k => {
+      const val = process.env[k];
+      return `${k}=${val ? `${val.substring(0, 12)}...${val.substring(Math.max(0, val.length - 8))} (len: ${val.length})` : 'undefined'}`;
+    }));
+    console.log(`[API] --- End API Key Debug ---`);
+
+    // Create a seed from answers for deterministic fallback (use this everywhere)
+    const answerSeed = body?.name 
+      ? body.name + (body.answers || []).map(a => a.selectedOptionText || a.customText || '').join('|')
+      : fallbackSeed;
 
     if (!apiKey) {
-      console.error("[API] OPENAI_API_KEY not configured");
-      return NextResponse.json(getFallbackResult(fallbackSeed));
+      console.log(`[API] ========================================`);
+      console.log(`[API] OPENAI_API_KEY not configured - using fallback`);
+      console.log(`[API] Answer seed: ${answerSeed.substring(0, 50)}...`);
+      const availableChars = getAvailableCharacters();
+      const fallbackChar = availableChars.length > 0 
+        ? selectBalancedCharacter(answerSeed, availableChars)
+        : getFallbackResult(answerSeed).characterName;
+      recordSelection(fallbackChar);
+      console.log(`[API] Fallback character selected: "${fallbackChar}"`);
+      console.log(`[API] ========================================`);
+      return NextResponse.json({
+        characterName: fallbackChar,
+        revealText: getFallbackResult(answerSeed).revealText,
+      });
     }
     
     if (!body?.name || !body?.questions?.length) {
-      console.error("[API] Invalid request body");
-      return NextResponse.json(getFallbackResult(fallbackSeed));
+      console.log(`[API] ========================================`);
+      console.error("[API] Invalid request body - using fallback");
+      console.log(`[API] Body received:`, { name: body?.name, questionsLength: body?.questions?.length, answersLength: body?.answers?.length });
+      const availableChars = getAvailableCharacters();
+      const fallbackChar = availableChars.length > 0 
+        ? selectBalancedCharacter(answerSeed, availableChars)
+        : getFallbackResult(answerSeed).characterName;
+      recordSelection(fallbackChar);
+      console.log(`[API] Fallback character selected: "${fallbackChar}"`);
+      console.log(`[API] ========================================`);
+      return NextResponse.json({
+        characterName: fallbackChar,
+        revealText: getFallbackResult(answerSeed).revealText,
+      });
     }
 
+    console.log(`[API] ========================================`);
     console.log(`[API] Analyzing ${body.name} with ${body.answers.length} answers`);
+    console.log(`[API] OpenAI API key present: ${apiKey ? 'YES' : 'NO'}`);
+    console.log(`[API] Using AI: ${apiKey ? 'YES' : 'NO (fallback mode)'}`);
 
     // Get characters that are available (not overused recently)
     const availableCharacters = getAvailableCharacters();
     const overusedCharacters = CHARACTERS.filter(char => !availableCharacters.includes(char));
     
-    // Create a seed from answers for deterministic fallback
-    const answerSeed = body.name + body.answers.map(a => a.selectedOptionText || a.customText || '').join('|');
+    console.log(`[API] Available characters: ${availableCharacters.length}/${CHARACTERS.length}, Overused: ${overusedCharacters.length}`);
+    if (overusedCharacters.length > 0) {
+      console.log(`[API] Overused characters: ${overusedCharacters.join(', ')}`);
+    }
 
-    const response = await fetch(OPENAI_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        temperature: 1.2, // Increased for more variety
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an expert personality psychologist specializing in Christmas archetypes. Your job is to deeply analyze quiz responses, identify personality patterns, and match people to the character that BEST fits their psychological profile. Consider: chaos tolerance, humor style (dark vs wholesome), traditionalism vs rebellion, social behavior, emotional state, and life philosophy. BE SPECIFIC and VARIED in your matches - different answer patterns should lead to different characters.",
-          },
-          {
-            role: "user",
-            content: `Perform a deep psychological analysis of this person's quiz responses:
+    // Build the AI request payload
+    const aiRequestPayload = {
+      model: MODEL,
+      temperature: 1.2,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an expert personality psychologist specializing in Christmas archetypes. Your job is to deeply analyze quiz responses, identify personality patterns, and match people to the character that BEST fits their psychological profile. Consider: chaos tolerance, humor style (dark vs wholesome), traditionalism vs rebellion, social behavior, emotional state, and life philosophy. BE SPECIFIC and VARIED in your matches - different answer patterns should lead to different characters.",
+        },
+        {
+          role: "user",
+          content: `Perform a deep psychological analysis of this person's quiz responses:
 
-USER: ${body.name} (Use their name as context for personality interpretation)
+USER: ${body!.name} (Use their name as context for personality interpretation)
 ANALYSIS SESSION: ${Date.now()} (Ensure fresh analysis, not cached response)
 
 THEIR COMPLETE ANSWER PROFILE:
-${body.answers.map((a, i) => `Q${i + 1}: "${body.questions[i].prompt}"
+${body!.answers.map((a, i) => `Q${i + 1}: "${body!.questions[i]?.prompt || 'Unknown question'}"
    → Selected: "${a.selectedOptionText || 'No answer'}"${a.customText ? `
    → Custom response: "${a.customText}"` : ''}`).join('\n\n')}
 
@@ -212,29 +273,98 @@ Return ONLY JSON:
   "revealText": "personalized psychological analysis referencing their specific choices",
   "tagline": "optional punchy phrase"
 }`,
-          },
-        ],
-      }),
+        },
+      ],
+    };
+
+    console.log(`[API] --- AI Request Payload ---`);
+    console.log(`[API] Model: ${aiRequestPayload.model}`);
+    console.log(`[API] Temperature: ${aiRequestPayload.temperature}`);
+    console.log(`[API] User message length: ${aiRequestPayload.messages[1].content.length} chars`);
+    console.log(`[API] Number of answers: ${body!.answers.length}`);
+    console.log(`[API] Answers summary:`, body!.answers.map((a, i) => ({
+      question: body!.questions[i]?.prompt?.substring(0, 50) + '...',
+      selected: a.selectedOptionText || a.customText || 'No answer'
+    })));
+
+    const response = await fetch(OPENAI_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(aiRequestPayload),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[API] OpenAI error ${response.status}:`, errorText);
-      return NextResponse.json(getFallbackResult(body.name));
+      console.error(`[API] --- AI API Error ---`);
+      console.error(`[API] Status: ${response.status}`);
+      console.error(`[API] Error response:`, errorText);
+      console.error(`[API] Using balanced fallback due to API error`);
+      const availableChars = getAvailableCharacters();
+      const fallbackChar = availableChars.length > 0 
+        ? selectBalancedCharacter(answerSeed, availableChars)
+        : getFallbackResult(answerSeed).characterName;
+      recordSelection(fallbackChar);
+      console.log(`[API] Fallback character selected: "${fallbackChar}"`);
+      console.log(`[API] ========================================`);
+      return NextResponse.json({
+        characterName: fallbackChar,
+        revealText: getFallbackResult(answerSeed).revealText,
+      });
     }
 
+    console.log(`[API] --- AI API Response ---`);
+    console.log(`[API] Status: ${response.status} OK`);
     const data = await response.json();
+    console.log(`[API] Full AI response:`, JSON.stringify(data, null, 2));
     const content = data?.choices?.[0]?.message?.content ?? "";
+    console.log(`[API] Extracted content length: ${content.length} chars`);
+    console.log(`[API] Raw content:`, content.substring(0, 500) + (content.length > 500 ? '...' : ''));
     const parsed = extractJson(content);
+    console.log(`[API] Parsed JSON:`, parsed);
 
     if (!isValidResult(parsed)) {
-      console.error("[API] Invalid AI response format");
-      return NextResponse.json(getFallbackResult(body.name));
+      console.error(`[API] --- Invalid AI Response Format ---`);
+      console.error(`[API] Parsed result:`, parsed);
+      console.error(`[API] Using balanced fallback`);
+      const availableChars = getAvailableCharacters();
+      const fallbackChar = availableChars.length > 0 
+        ? selectBalancedCharacter(answerSeed, availableChars)
+        : getFallbackResult(answerSeed).characterName;
+      recordSelection(fallbackChar);
+      console.log(`[API] Fallback character selected: "${fallbackChar}"`);
+      console.log(`[API] ========================================`);
+      return NextResponse.json({
+        characterName: fallbackChar,
+        revealText: getFallbackResult(answerSeed).revealText,
+      });
     }
 
     if (!CHARACTERS.includes(parsed.characterName)) {
-      console.error(`[API] AI returned invalid character: ${parsed.characterName}`);
-      return NextResponse.json(getFallbackResult(body.name));
+      console.error(`[API] --- Invalid Character Name from AI ---`);
+      console.error(`[API] AI returned: "${parsed.characterName}"`);
+      console.error(`[API] Valid characters: ${CHARACTERS.length} total`);
+      console.error(`[API] Using balanced fallback`);
+      const availableChars = getAvailableCharacters();
+      const fallbackChar = availableChars.length > 0 
+        ? selectBalancedCharacter(answerSeed, availableChars)
+        : getFallbackResult(answerSeed).characterName;
+      recordSelection(fallbackChar);
+      console.log(`[API] Fallback character selected: "${fallbackChar}"`);
+      console.log(`[API] ========================================`);
+      return NextResponse.json({
+        characterName: fallbackChar,
+        revealText: getFallbackResult(answerSeed).revealText,
+      });
+    }
+
+    console.log(`[API] --- AI Selection Valid ---`);
+    console.log(`[API] AI selected character: "${parsed.characterName}"`);
+    console.log(`[API] AI reveal text: "${parsed.revealText.substring(0, 100)}..."`);
+    if (parsed.tagline) {
+      console.log(`[API] AI tagline: "${parsed.tagline}"`);
     }
 
     // Check if the AI-selected character has been overused
@@ -246,7 +376,9 @@ Return ONLY JSON:
     if (recentCount >= MAX_REPEATS_IN_WINDOW) {
       // Character is overused, use balanced selection instead
       const balancedChar = selectBalancedCharacter(answerSeed, availableCharacters);
-      console.log(`[API] AI selected overused character "${parsed.characterName}" (used ${recentCount} times recently). Using balanced selection: "${balancedChar}"`);
+      console.log(`[API] --- Character Overused, Substituting ---`);
+      console.log(`[API] AI selected: "${parsed.characterName}" (used ${recentCount} times in last ${MAX_RECENT_TRACK} selections)`);
+      console.log(`[API] Substituting with balanced selection: "${balancedChar}"`);
       
       finalCharacter = balancedChar;
       
@@ -271,7 +403,7 @@ Return ONLY JSON:
               {
                 role: "user",
                 content: `Write a personalized reveal (3-5 sentences) for "${balancedChar}" based on these quiz answers:
-${body.answers.map((a, i) => `Q${i + 1}: "${body.questions[i].prompt}" → "${a.selectedOptionText || a.customText || 'No answer'}"`).join('\n')}
+${body!.answers.map((a, i) => `Q${i + 1}: "${body!.questions[i]?.prompt || 'Unknown question'}" → "${a.selectedOptionText || a.customText || 'No answer'}"`).join('\n')}
 
 Reference at least 2 specific choices. Return JSON: {"revealText": "...", "tagline": "optional phrase"}`,
               },
@@ -295,13 +427,17 @@ Reference at least 2 specific choices. Return JSON: {"revealText": "...", "tagli
         console.log(`[API] Could not generate reveal text for substituted character, using original`);
       }
     } else {
-      console.log(`[API] AI selection "${parsed.characterName}" is acceptable (used ${recentCount} times recently)`);
+      console.log(`[API] AI selection is acceptable (used ${recentCount} times in last ${MAX_RECENT_TRACK} selections)`);
     }
 
     // Record the final selection
     recordSelection(finalCharacter);
 
-    console.log(`[API] Success: Matched ${body.name} to ${finalCharacter}`);
+    console.log(`[API] --- Final Result ---`);
+    console.log(`[API] Final character: "${finalCharacter}"`);
+    console.log(`[API] Reveal text length: ${finalRevealText.length} chars`);
+    console.log(`[API] Success: Matched ${body!.name} to ${finalCharacter}`);
+    console.log(`[API] ========================================`);
 
     return NextResponse.json({
       characterName: finalCharacter,
@@ -316,7 +452,20 @@ Reference at least 2 specific choices. Return JSON: {"revealText": "...", "tagli
     });
   } catch (error) {
     console.error("[API] Exception:", error instanceof Error ? error.message : String(error));
-    return NextResponse.json(getFallbackResult(fallbackSeed), {
+    console.error("[API] Stack:", error instanceof Error ? error.stack : 'No stack');
+    // Use answerSeed if we have it, otherwise use fallbackSeed
+    const seed = body?.name 
+      ? body.name + (body.answers || []).map(a => a.selectedOptionText || a.customText || '').join('|')
+      : fallbackSeed;
+    const availableChars = getAvailableCharacters();
+    const fallbackChar = availableChars.length > 0 
+      ? selectBalancedCharacter(seed, availableChars)
+      : getFallbackResult(seed).characterName;
+    recordSelection(fallbackChar);
+    return NextResponse.json({
+      characterName: fallbackChar,
+      revealText: getFallbackResult(seed).revealText,
+    }, {
       headers: {
         "Access-Control-Allow-Origin": "*",
       },
