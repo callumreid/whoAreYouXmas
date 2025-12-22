@@ -6,6 +6,53 @@ import { getFallbackResult } from "@/lib/fallback";
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 
+// Track recent character selections to ensure balanced distribution
+// This is in-memory, so it resets on server restart, but helps prevent repetition
+const RECENT_SELECTIONS: string[] = [];
+const MAX_RECENT_TRACK = 20; // Track last 20 selections
+const MAX_REPEATS_IN_WINDOW = 2; // Max 2 occurrences in recent window
+
+// Hash function for deterministic selection
+const hashString = (value: string) => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+};
+
+// Get characters that haven't been overused recently
+const getAvailableCharacters = (): string[] => {
+  const counts = new Map<string, number>();
+  
+  // Count occurrences in recent selections
+  for (const char of RECENT_SELECTIONS) {
+    counts.set(char, (counts.get(char) || 0) + 1);
+  }
+  
+  // Return characters that haven't exceeded the limit
+  return CHARACTERS.filter(char => (counts.get(char) || 0) < MAX_REPEATS_IN_WINDOW);
+};
+
+// Record a character selection
+const recordSelection = (characterName: string) => {
+  RECENT_SELECTIONS.push(characterName);
+  if (RECENT_SELECTIONS.length > MAX_RECENT_TRACK) {
+    RECENT_SELECTIONS.shift(); // Remove oldest
+  }
+};
+
+// Select a balanced character deterministically from available options
+const selectBalancedCharacter = (seed: string, availableChars: string[]): string => {
+  if (availableChars.length === 0) {
+    // If all characters are overused, reset and use all
+    return CHARACTERS[hashString(seed) % CHARACTERS.length] ?? CHARACTERS[0];
+  }
+  const hash = hashString(seed);
+  return availableChars[hash % availableChars.length] ?? availableChars[0];
+};
+
 // Character personality profiles for better matching
 const CHARACTER_PROFILES = `
 CHARACTER PERSONALITY PROFILES (use these to match):
@@ -90,6 +137,13 @@ export async function POST(request: Request) {
 
     console.log(`[API] Analyzing ${body.name} with ${body.answers.length} answers`);
 
+    // Get characters that are available (not overused recently)
+    const availableCharacters = getAvailableCharacters();
+    const overusedCharacters = CHARACTERS.filter(char => !availableCharacters.includes(char));
+    
+    // Create a seed from answers for deterministic fallback
+    const answerSeed = body.name + body.answers.map(a => a.selectedOptionText || a.customText || '').join('|');
+
     const response = await fetch(OPENAI_URL, {
       method: "POST",
       headers: {
@@ -98,7 +152,7 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         model: MODEL,
-        temperature: 1.0, // Increased for more variety
+        temperature: 1.2, // Increased for more variety
         response_format: { type: "json_object" },
         messages: [
           {
@@ -120,6 +174,11 @@ ${body.answers.map((a, i) => `Q${i + 1}: "${body.questions[i].prompt}"
 
 ${CHARACTER_PROFILES}
 
+${overusedCharacters.length > 0 ? `\nIMPORTANT: The following characters have been used too frequently recently and should be AVOIDED unless they are an absolutely perfect match:
+${overusedCharacters.map(char => `- ${char}`).join('\n')}
+
+Please select from the remaining characters to ensure variety.` : ''}
+
 ANALYSIS INSTRUCTIONS:
 1. PSYCHOLOGICAL PATTERN ANALYSIS:
    - What's their chaos tolerance? (organized vs chaotic)
@@ -132,10 +191,11 @@ ANALYSIS INSTRUCTIONS:
 2. MATCH TO ONE CHARACTER:
    - Look at the CHARACTER PROFILES above
    - Find the character whose traits align MOST with their pattern
-   - CRITICAL: Vary your selections - avoid repeating the same character
+   - ${overusedCharacters.length > 0 ? 'CRITICAL: Avoid the overused characters listed above. ' : ''}Vary your selections - avoid repeating the same character
    - If answers are similar but not identical, find nuanced differences
    - Consider the whole answer pattern, not just one answer
    - Even small differences in choices should lead to different characters
+   - ${availableCharacters.length < CHARACTERS.length ? `Prefer selecting from characters that haven't been overused recently to ensure balanced distribution.` : ''}
 
 3. WRITE PERSONALIZED REVEAL (3-5 sentences):
    - Reference AT LEAST 2 specific choices they made
@@ -177,12 +237,76 @@ Return ONLY JSON:
       return NextResponse.json(getFallbackResult(body.name));
     }
 
-    console.log(`[API] Success: Matched ${body.name} to ${parsed.characterName}`);
+    // Check if the AI-selected character has been overused
+    const recentCount = RECENT_SELECTIONS.filter(char => char === parsed.characterName).length;
+    let finalCharacter = parsed.characterName;
+    let finalRevealText = parsed.revealText;
+    let finalTagline = parsed.tagline;
+
+    if (recentCount >= MAX_REPEATS_IN_WINDOW) {
+      // Character is overused, use balanced selection instead
+      const balancedChar = selectBalancedCharacter(answerSeed, availableCharacters);
+      console.log(`[API] AI selected overused character "${parsed.characterName}" (used ${recentCount} times recently). Using balanced selection: "${balancedChar}"`);
+      
+      finalCharacter = balancedChar;
+      
+      // Get appropriate reveal text for the substituted character
+      // Make a quick AI call to get character-appropriate text
+      try {
+        const revealResponse = await fetch(OPENAI_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            temperature: 0.8,
+            response_format: { type: "json_object" },
+            messages: [
+              {
+                role: "system",
+                content: "You write personalized, funny personality test results for Christmas characters. Be insightful and reference specific quiz answers.",
+              },
+              {
+                role: "user",
+                content: `Write a personalized reveal (3-5 sentences) for "${balancedChar}" based on these quiz answers:
+${body.answers.map((a, i) => `Q${i + 1}: "${body.questions[i].prompt}" → "${a.selectedOptionText || a.customText || 'No answer'}"`).join('\n')}
+
+Reference at least 2 specific choices. Return JSON: {"revealText": "...", "tagline": "optional phrase"}`,
+              },
+            ],
+          }),
+        });
+
+        if (revealResponse.ok) {
+          const revealData = await revealResponse.json();
+          const revealContent = revealData?.choices?.[0]?.message?.content ?? "";
+          const revealParsed = extractJson(revealContent);
+          if (revealParsed?.revealText) {
+            finalRevealText = revealParsed.revealText;
+            if (revealParsed.tagline) {
+              finalTagline = revealParsed.tagline;
+            }
+          }
+        }
+      } catch (revealError) {
+        // If reveal text generation fails, keep the original AI text
+        console.log(`[API] Could not generate reveal text for substituted character, using original`);
+      }
+    } else {
+      console.log(`[API] AI selection "${parsed.characterName}" is acceptable (used ${recentCount} times recently)`);
+    }
+
+    // Record the final selection
+    recordSelection(finalCharacter);
+
+    console.log(`[API] Success: Matched ${body.name} to ${finalCharacter}`);
 
     return NextResponse.json({
-      characterName: parsed.characterName,
-      revealText: parsed.revealText,
-      tagline: parsed.tagline,
+      characterName: finalCharacter,
+      revealText: finalRevealText,
+      tagline: finalTagline,
     }, {
       headers: {
         "Access-Control-Allow-Origin": "*",
