@@ -12,6 +12,7 @@ import type { GameState, XmasAnswer } from "@/types/game";
 import { QUESTIONS } from "@/content/questions";
 
 const STORAGE_KEY = "whoAreYouXmasState";
+const QUESTION_HISTORY_KEY = "whoAreYouXmasQuestionHistory";
 const QUESTIONS_PER_GAME = 5;
 
 type GameStateContextValue = {
@@ -27,9 +28,27 @@ const GameStateContext = createContext<GameStateContextValue | undefined>(
   undefined,
 );
 
-const pickRandomQuestionIds = () => {
-  const shuffled = [...QUESTIONS].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, QUESTIONS_PER_GAME).map((question) => question.id);
+const shuffle = <T,>(values: T[]) => {
+  const copy = [...values];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+};
+
+const pickRandomQuestionIds = (history: string[]) => {
+  const historySet = new Set(history);
+  let available = QUESTIONS.filter((question) => !historySet.has(question.id));
+  const resetHistory = available.length < QUESTIONS_PER_GAME;
+  if (resetHistory) {
+    available = [...QUESTIONS];
+  }
+
+  const shuffled = shuffle(available);
+  const selected = shuffled.slice(0, QUESTIONS_PER_GAME).map((question) => question.id);
+  const nextHistory = resetHistory ? selected : [...historySet, ...selected];
+  return { selected, nextHistory };
 };
 
 const isValidState = (value: unknown): value is GameState => {
@@ -49,6 +68,7 @@ export function GameStateProvider({
 }) {
   const [state, setState] = useState<GameState | null>(null);
   const [ready, setReady] = useState(false);
+  const [questionHistory, setQuestionHistory] = useState<string[]>([]);
 
   useEffect(() => {
     const stored = sessionStorage.getItem(STORAGE_KEY);
@@ -60,6 +80,17 @@ export function GameStateProvider({
         }
       } catch {
         setState(null);
+      }
+    }
+    const storedHistory = sessionStorage.getItem(QUESTION_HISTORY_KEY);
+    if (storedHistory) {
+      try {
+        const parsed = JSON.parse(storedHistory);
+        if (Array.isArray(parsed) && parsed.every((id) => typeof id === "string")) {
+          setQuestionHistory(parsed);
+        }
+      } catch {
+        setQuestionHistory([]);
       }
     }
     setReady(true);
@@ -74,15 +105,22 @@ export function GameStateProvider({
     }
   }, [ready, state]);
 
+  useEffect(() => {
+    if (!ready) return;
+    sessionStorage.setItem(QUESTION_HISTORY_KEY, JSON.stringify(questionHistory));
+  }, [ready, questionHistory]);
+
   const startGame = useCallback((name: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
+    const { selected, nextHistory } = pickRandomQuestionIds(questionHistory);
+    setQuestionHistory(nextHistory);
     setState({
       name: trimmed,
-      questionIds: pickRandomQuestionIds(),
+      questionIds: selected,
       answers: [],
     });
-  }, []);
+  }, [questionHistory]);
 
   const answerQuestion = useCallback(
     (answer: XmasAnswer) => {
