@@ -32,7 +32,7 @@ export const QUESTIONS: XmasQuestion[] = [
   {
     id: "q5",
     prompt: "You find a list labeled ‘Naughty.’ What do you do?",
-    options: ["Update it with receipts", "Pretend you never saw it", "Add my own name for sport", "Fold it up and mind my business"],
+    options: ["Update it with receipts", "Pretend you never saw it", "Put Santa on it for labor violations", "Fold it up and mind my business"],
     imagePrompt: "A thick parchment scroll labeled 'NAUGHTY' in big red letters, lying on a wooden table next to a flickering candle and a quill.",
     imageSide: "left",
   },
@@ -207,7 +207,7 @@ export const QUESTIONS: XmasQuestion[] = [
   {
     id: "q30",
     prompt: "Pick your holiday conspiracy theory.",
-    options: ["Santa is a government drone", "Elves unionized decades ago", "Reindeer can't actually fly", "Santa is just a really good planner"],
+    options: ["Santa is just a brand now", "Elves unionized decades ago", "Christ was not born on this day", "Santa is just a really good planner"],
     imagePrompt: "A grainy, surveillance-style photo of a sleigh silhouette in the night sky with dramatic conspiracy-style red circles and arrows.",
     imageSide: "right",
   },
@@ -382,7 +382,7 @@ export const QUESTIONS: XmasQuestion[] = [
   {
     id: "q55",
     prompt: "Someone double-dips in the punch. You...",
-    options: ["Call them out immediately", "Mental note, switch to wine", "Join them in solidarity", "Laugh it off, switch cups"],
+    options: ["Call them out immediately", "Mental note, switch to wine", "scream JIMMINY CHRISTMAS!", "Laugh it off, switch cups"],
     imagePrompt: "A festive punch bowl with ladle at a party, someone's hand reaching in suspiciously, overhead view.",
     imageSide: "left",
   },
