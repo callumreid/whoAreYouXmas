@@ -67,7 +67,7 @@ CHARACTER PERSONALITY PROFILES (use these to match):
 - Boring Flightless Reindeer: Unremarkable, blends in, plays it safe, no plot twists
 - The Grinch (early movie): Bitter, antisocial, actively dislikes Christmas, isolationist
 - The Grinch (late movie): Reformed, heart grown, optimistic, found the true meaning
-- Krampus: Dark humor, punisher, chaos energy, slightly menacing
+- Krampus: Dark humor, punisher, menacing, not playful chaos
 - Frosty the Snowman: Jolly, innocent, childlike wonder, ephemeral joy
 - Charlie Brown: Melancholic, trying their best, things go wrong, existential
 - Polar Bear (laid of by Coke): Unemployed, betrayed by capitalism, cynical about commercialism
@@ -96,11 +96,73 @@ CHARACTER PERSONALITY PROFILES (use these to match):
 - Buzz McCallister (from home alone): Bully, antagonist, mean older sibling
 - the Bad Mother from home alone: Guilt-ridden, frantic, realizes mistakes too late
 - runaway polar express: Out of control, dangerous, thrilling, off the rails
+- Jesus Dressed as Santa: Holy-but-conflicted, spiritual guilt, tries to be wholesome but weirdly intense
+- A Christmas Cow ('mooo'): Absurd, wholesome, low-stakes chaos, rural charm, gentle oddball
 `;
+
+const CHARACTER_LIST = `ALL VALID CHARACTERS (choose exactly one):
+${CHARACTERS.map((character) => `- ${character}`).join("\n")}
+`;
+
+const CHARACTER_BIAS_GUARDRAILS = `
+BIAS GUARDRAILS (IMPORTANT):
+- Krampus is ONLY for dark/menacing/punisher energy. If answers are playful, wholesome, or just zany/chaotic, pick a different character.
+- Kevin McCallister is ONLY if answers show trap-setting cleverness, defensive creativity, or home-defender vibes.
+- If answers are generally wholesome/bright, prefer characters like Santy Claus (OG), Frosty the Snowman, Adult Caroler, or Baby Jesus.
+- If answers are zany/chaotic but not dark, prefer characters like Xmas Tree on the Roof of the Car, Blow-Up Inflatable Santa, Over-Served Uncle (boisterous), Surfing Santy Claws, or runaway polar express.
+`;
+
+const hasDarkSignals = (answers: XmasAnswer[]) => {
+  const text = answers
+    .map((a) => (a.selectedOptionText || a.customText || "").toLowerCase())
+    .join(" | ");
+  const darkTokens = [
+    "ominous",
+    "haunt",
+    "skull",
+    "cursed",
+    "menacing",
+    "weaponize",
+    "punish",
+    "devil",
+    "evil",
+    "threatening",
+    "refund",
+    "regret",
+    "apocalyptic",
+    "crime",
+    "spooky",
+    "ghost",
+    "night watch",
+    "mystery",
+    "doorstop",
+    "spite",
+  ];
+  return darkTokens.some((token) => text.includes(token));
+};
+
+const hasKevinSignals = (answers: XmasAnswer[]) => {
+  const text = answers
+    .map((a) => (a.selectedOptionText || a.customText || "").toLowerCase())
+    .join(" | ");
+  const kevinTokens = [
+    "trap",
+    "tactical",
+    "fort",
+    "defend",
+    "home",
+    "engineer",
+    "improvise aggressively",
+    "aggressive shortcuts",
+    "creative patchwork",
+    "duct tape",
+  ];
+  return kevinTokens.some((token) => text.includes(token));
+};
 
 type GenerateBody = {
   name: string;
-  questions: { prompt: string; options: [string, string, string] }[];
+  questions: { prompt: string; options: [string, string, string, string] }[];
   answers: XmasAnswer[];
 };
 
@@ -234,6 +296,10 @@ ${body!.answers.map((a, i) => `Q${i + 1}: "${body!.questions[i]?.prompt || 'Unkn
    → Custom response: "${a.customText}"` : ''}`).join('\n\n')}
 
 ${CHARACTER_PROFILES}
+
+${CHARACTER_LIST}
+
+${CHARACTER_BIAS_GUARDRAILS}
 
 ${overusedCharacters.length > 0 ? `\nIMPORTANT: The following characters have been used too frequently recently and should be AVOIDED unless they are an absolutely perfect match:
 ${overusedCharacters.map(char => `- ${char}`).join('\n')}
@@ -428,6 +494,21 @@ Reference at least 2 specific choices. Return JSON: {"revealText": "...", "tagli
       }
     } else {
       console.log(`[API] AI selection is acceptable (used ${recentCount} times in last ${MAX_RECENT_TRACK} selections)`);
+    }
+
+    const isKrampus = finalCharacter === "Krampus";
+    const isKevin = finalCharacter === "Kevin McCallister (from home alone)";
+    const darkSignals = hasDarkSignals(body!.answers);
+    const kevinSignals = hasKevinSignals(body!.answers);
+
+    if ((isKrampus && !darkSignals) || (isKevin && !kevinSignals)) {
+      const blocked = new Set<string>([finalCharacter]);
+      const filteredAvailable = availableCharacters.filter((char) => !blocked.has(char));
+      const balancedChar = selectBalancedCharacter(answerSeed, filteredAvailable);
+      console.log(`[API] --- Guardrail Substitution ---`);
+      console.log(`[API] Blocked character: "${finalCharacter}" (signals missing)`);
+      console.log(`[API] Substituting with balanced selection: "${balancedChar}"`);
+      finalCharacter = balancedChar;
     }
 
     // Record the final selection

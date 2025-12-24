@@ -1,7 +1,7 @@
 export type XmasQuestion = {
   id: string;
   prompt: string;
-  options: [string, string, string];
+  options: [string, string, string, string];
   imagePrompt?: string;
   imageSide?: "left" | "right";
 };
