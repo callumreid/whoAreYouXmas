@@ -18,9 +18,37 @@ const bodyFont = Patrick_Hand({
   variable: "--font-body",
 });
 
+const SITE_URL = "https://who-are-you-xmas.vercel.app";
+const TITLE = "whoAreYouXmas — A Charlie Brown Investigation";
+const DESCRIPTION =
+  "A cozy but chaotic Christmas personality quiz. Answer five unhinged holiday questions and find out which Christmas character you really are — Krampus, Frosty, or the Smelly Mall Santa.";
+
 export const metadata: Metadata = {
-  title: "whoAreYouXmas - A Charlie Brown Investigation",
-  description: "A cozy but chaotic Christmas personality quiz.",
+  metadataBase: new URL(SITE_URL),
+  title: TITLE,
+  description: DESCRIPTION,
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "whoAreYouXmas",
+    title: TITLE,
+    description: DESCRIPTION,
+    url: "/",
+    images: [
+      {
+        url: "/og.jpg",
+        width: 1200,
+        height: 630,
+        alt: "whoAreYouXmas title art — a cozy chaotic Christmas scene",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+    images: ["/og.jpg"],
+  },
   icons: {
     icon: "/whoAreYouXmasThumbnail1-114x114.png",
     shortcut: "/whoAreYouXmasThumbnail1-114x114.png",
