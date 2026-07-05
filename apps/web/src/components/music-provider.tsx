@@ -10,7 +10,7 @@ export function MusicProvider() {
   })
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
+    <div className="music-toggle fixed bottom-4 right-4 z-50">
       <button
         onClick={isPlaying ? pause : play}
         className="rounded-xl px-3 py-2 shadow bg-white/90 backdrop-blur"

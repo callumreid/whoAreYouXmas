@@ -84,3 +84,42 @@ input:focus-visible {
   outline: 4px solid var(--color-red);
   outline-offset: 4px;
 }
+
+/* ===== TV mode (Fire TV WebView — Houseboat Studios conventions) ===== */
+
+/* Base font bump for 1080p viewing distance (rem-based Tailwind sizes scale) */
+.tv-mode {
+  font-size: 130%;
+}
+
+/* No pointer on TV */
+.tv-mode,
+.tv-mode * {
+  cursor: none !important;
+}
+
+/* 5% overscan-safe padding; shrink full-screen mains so nothing overflows */
+.tv-mode body {
+  padding: 5vh 5vw;
+}
+
+.tv-mode main {
+  min-height: 90vh;
+}
+
+/* Amber D-pad focus ring — plain :focus too, since programmatic .focus()
+   (auto-focus on mount) doesn't always trigger :focus-visible */
+.tv-mode button:focus,
+.tv-mode button:focus-visible,
+.tv-mode textarea:focus,
+.tv-mode input:focus,
+.tv-mode [tabindex]:focus {
+  outline: 3px solid #f5b942;
+  outline-offset: 3px;
+}
+
+/* The music toggle is a pointer-only control; hide it on TV so D-pad
+   spatial navigation can't strand focus on it */
+.tv-mode .music-toggle {
+  display: none;
+}

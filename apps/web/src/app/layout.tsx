@@ -5,6 +5,7 @@ import "./globals.css";
 import { GameStateProvider } from "@/components/game-state-provider";
 import { SnowEffect } from "@/components/snow-effect";
 import { MusicProvider } from "@/components/music-provider";
+import { TvModeProvider } from "@/components/tv-mode-provider";
 
 const headingFont = Coming_Soon({
   weight: "400",
@@ -64,9 +65,11 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${headingFont.variable} ${bodyFont.variable}`}>
       <body className="antialiased">
-        <SnowEffect />
-        <GameStateProvider>{children}</GameStateProvider>
-        <MusicProvider />
+        <TvModeProvider>
+          <SnowEffect />
+          <GameStateProvider>{children}</GameStateProvider>
+          <MusicProvider />
+        </TvModeProvider>
         <Analytics />
       </body>
     </html>

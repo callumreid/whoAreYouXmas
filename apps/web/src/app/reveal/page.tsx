@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGameState } from "@/components/game-state-provider";
+import { useTvMode } from "@/components/tv-mode-provider";
 import { QUESTIONS_BY_ID } from "@/content/questions";
 import { LOADING_PHRASES } from "@/content/loadingPhrases";
 import type { RevealResult } from "@/types/game";
@@ -14,6 +15,7 @@ const MIN_LOADING_MS = 2200;
 export default function RevealPage() {
   const router = useRouter();
   const { state, ready, resetGame } = useGameState();
+  const tvMode = useTvMode();
   const [phase, setPhase] = useState<"loading" | "reveal">("loading");
   const [result, setResult] = useState<RevealResult | null>(null);
   const [progress, setProgress] = useState(0);
@@ -28,6 +30,31 @@ export default function RevealPage() {
       return () => clearTimeout(timer);
     }
   }, [phase, result]);
+
+  // TV mode: keep D-pad focus on the primary action; Up/Down scrolls the
+  // reveal card in case the bumped font + character image overflow 1080p
+  useEffect(() => {
+    if (!tvMode || phase !== "reveal") return;
+
+    const handleArrows = (event: KeyboardEvent) => {
+      const arrows = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+      if (!arrows.includes(event.key)) return;
+      event.preventDefault();
+
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        window.scrollBy({
+          top: event.key === "ArrowDown" ? 160 : -160,
+          behavior: "smooth",
+        });
+      }
+      if (document.activeElement !== playAgainRef.current) {
+        playAgainRef.current?.focus({ preventScroll: true });
+      }
+    };
+
+    window.addEventListener("keydown", handleArrows);
+    return () => window.removeEventListener("keydown", handleArrows);
+  }, [tvMode, phase]);
 
   const payload = useMemo(() => {
     if (!state) return null;

@@ -3,14 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGameState } from "@/components/game-state-provider";
+import { useTvMode } from "@/components/tv-mode-provider";
 import { QUESTIONS_BY_ID } from "@/content/questions";
 
 export default function PlayPage() {
   const router = useRouter();
   const { state, ready, answerQuestion, undoLastAnswer } = useGameState();
+  const tvMode = useTvMode();
   const [customAnswer, setCustomAnswer] = useState("");
   const [imageLoaded, setImageLoaded] = useState(false);
-  const firstOptionRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   useEffect(() => {
     if (!ready) return;
@@ -48,16 +50,52 @@ export default function PlayPage() {
     img.onerror = () => setImageLoaded(true); // Show question even if image fails
   }, [currentQuestion?.id]);
 
-  // Auto-focus first option when question changes
+  // Auto-focus first option when question changes. Re-runs when imageLoaded
+  // flips, because until the image loads the option buttons aren't mounted
+  // and the focus call would hit nothing (critical for TV D-pad play).
   useEffect(() => {
-    if (ready && currentQuestion) {
+    if (ready && currentQuestion && imageLoaded) {
       // Small delay to ensure DOM is ready and focus transition is smooth
       const timer = setTimeout(() => {
-        firstOptionRef.current?.focus();
+        optionRefs.current[0]?.focus();
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [currentIndex, ready]);
+  }, [currentIndex, ready, imageLoaded, currentQuestion]);
+
+  // D-pad navigation among option buttons (TV mode only): Up/Down moves
+  // focus through the vertical option list, Enter clicks the focused button
+  useEffect(() => {
+    if (!tvMode) return;
+
+    const handleArrowNav = (event: KeyboardEvent) => {
+      const arrows = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+      if (!arrows.includes(event.key)) return;
+
+      const buttons = optionRefs.current.filter(
+        (button): button is HTMLButtonElement => Boolean(button),
+      );
+      if (buttons.length === 0) return;
+      event.preventDefault();
+
+      const activeIndex = buttons.findIndex(
+        (button) => button === document.activeElement,
+      );
+      if (activeIndex < 0) {
+        buttons[0]?.focus();
+        return;
+      }
+
+      if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+        buttons[Math.min(activeIndex + 1, buttons.length - 1)]?.focus();
+      } else {
+        buttons[Math.max(activeIndex - 1, 0)]?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleArrowNav);
+    return () => window.removeEventListener("keydown", handleArrowNav);
+  }, [tvMode]);
 
   // Handle back button for TV/Web
   useEffect(() => {
@@ -177,7 +215,9 @@ export default function PlayPage() {
             {currentQuestion.options.map((option, index) => (
               <button
                 key={option}
-                ref={index === 0 ? firstOptionRef : null}
+                ref={(el) => {
+                  optionRefs.current[index] = el;
+                }}
                 type="button"
                 onClick={() => handleSelect(option)}
                 className="w-full border-4 border-[#1a1a1a] bg-white px-4 py-3 text-left text-base sm:text-lg font-bold text-[#1a1a1a] shadow-[4px_4px_0px_#1a1a1a] transition-all hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none focus:bg-[#b3d9ff]"
@@ -187,6 +227,7 @@ export default function PlayPage() {
             ))}
           </div>
 
+          {tvMode ? null : (
           <div className="mt-8 border-t-4 border-[#1a1a1a] pt-4">
             <p className="text-xs uppercase tracking-[0.25em] text-gray-500 font-bold">
               Or type your own
@@ -207,6 +248,7 @@ export default function PlayPage() {
               Submit Answer
             </button>
           </div>
+          )}
         </div>
       </div>
     </main>
